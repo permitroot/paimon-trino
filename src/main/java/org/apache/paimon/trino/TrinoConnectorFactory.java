@@ -29,8 +29,6 @@ import io.airlift.json.JsonModule;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.trino.filesystem.manager.FileSystemModule;
-import io.trino.hdfs.HdfsModule;
-import io.trino.hdfs.authentication.HdfsAuthenticationModule;
 import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorMetadata;
 import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorPageSinkProvider;
 import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorPageSourceProvider;
@@ -104,8 +102,6 @@ public class TrinoConnectorFactory implements ConnectorFactory {
                     new Bootstrap(
                             new JsonModule(),
                             new TrinoModule(config),
-                            new HdfsModule(),
-                            new HdfsAuthenticationModule(),
                             // bind the trino file system module
                             newFileSystemModule(catalogName, context),
                             binder -> {
@@ -198,11 +194,21 @@ public class TrinoConnectorFactory implements ConnectorFactory {
         try {
             if (constructor.getParameterCount() == 0) {
                 return (FileSystemModule) constructor.newInstance();
-            } else {
+            } else if (constructor.getParameterCount() == 3) {
                 // for trino 440
                 return (FileSystemModule)
                         constructor.newInstance(
                                 catalogName, context.getNodeManager(), context.getOpenTelemetry());
+            } else if (constructor.getParameterCount() == 4) {
+                // for trino 476
+                return (FileSystemModule)
+                        constructor.newInstance(
+                                catalogName,
+                                context.getNodeManager(),
+                                context.getOpenTelemetry(),
+                                false);
+            } else {
+                throw new RuntimeException("Unsupported trino version");
             }
         } catch (InstantiationException | InvocationTargetException | IllegalAccessException e) {
             throw new RuntimeException(e);

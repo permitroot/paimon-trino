@@ -25,19 +25,22 @@ import org.apache.paimon.catalog.Database;
 import org.apache.paimon.catalog.Identifier;
 import org.apache.paimon.catalog.PropertyChange;
 import org.apache.paimon.fs.FileIO;
+import org.apache.paimon.manifest.PartitionEntry;
 import org.apache.paimon.options.Options;
-import org.apache.paimon.partition.Partition;
 import org.apache.paimon.schema.Schema;
 import org.apache.paimon.schema.SchemaChange;
-import org.apache.paimon.security.SecurityContext;
 import org.apache.paimon.table.Table;
 import org.apache.paimon.trino.ClassLoaderUtils;
 import org.apache.paimon.trino.fileio.TrinoFileIOLoader;
+import org.apache.paimon.view.View;
 
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.spi.connector.ConnectorSession;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.security.UserGroupInformation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -54,6 +57,8 @@ public class TrinoCatalog implements Catalog {
     private Catalog current;
 
     private volatile boolean inited = false;
+
+    private static final Logger LOG = LoggerFactory.getLogger(TrinoCatalog.class);
 
     public TrinoCatalog(
             Options options,
@@ -80,7 +85,28 @@ public class TrinoCatalog implements Catalog {
                                                         new TrinoFileIOLoader(trinoFileSystem),
                                                         null);
                                         try {
-                                            SecurityContext.install(catalogContext);
+                                            // SecurityContext.install(catalogContext);
+                                            UserGroupInformation.setConfiguration(
+                                                    catalogContext.hadoopConf());
+                                            if (catalogContext
+                                                            .options()
+                                                            .containsKey(
+                                                                    "security.kerberos.login.principal")
+                                                    && catalogContext
+                                                            .options()
+                                                            .containsKey(
+                                                                    "security.kerberos.login.keytab")) {
+
+                                                UserGroupInformation.loginUserFromKeytab(
+                                                        catalogContext
+                                                                .options()
+                                                                .get(
+                                                                        "security.kerberos.login.principal"),
+                                                        catalogContext
+                                                                .options()
+                                                                .get(
+                                                                        "security.kerberos.login.keytab"));
+                                            }
                                         } catch (Exception e) {
                                             throw new RuntimeException(e);
                                         }
@@ -107,11 +133,6 @@ public class TrinoCatalog implements Catalog {
             throw new RuntimeException("Not inited yet.");
         }
         return current.options();
-    }
-
-    @Override
-    public boolean caseSensitive() {
-        return current.caseSensitive();
     }
 
     @Override
@@ -184,6 +205,11 @@ public class TrinoCatalog implements Catalog {
     }
 
     @Override
+    public void invalidateTable(Identifier identifier) {
+        current.invalidateTable(identifier);
+    }
+
+    @Override
     public void createPartition(Identifier identifier, Map<String, String> map)
             throws TableNotExistException {
         current.createPartition(identifier, map);
@@ -196,7 +222,8 @@ public class TrinoCatalog implements Catalog {
     }
 
     @Override
-    public List<Partition> listPartitions(Identifier identifier) throws TableNotExistException {
+    public List<PartitionEntry> listPartitions(Identifier identifier)
+            throws TableNotExistException {
         return current.listPartitions(identifier);
     }
 
@@ -217,5 +244,53 @@ public class TrinoCatalog implements Catalog {
     public void alterTable(Identifier identifier, SchemaChange change, boolean ignoreIfNotExists)
             throws TableNotExistException, ColumnAlreadyExistException, ColumnNotExistException {
         current.alterTable(identifier, change, ignoreIfNotExists);
+    }
+
+    @Override
+    public View getView(Identifier identifier) throws ViewNotExistException {
+        return current.getView(identifier);
+    }
+
+    @Override
+    public void dropView(Identifier identifier, boolean ignoreIfNotExists)
+            throws ViewNotExistException {
+        current.dropView(identifier, ignoreIfNotExists);
+    }
+
+    @Override
+    public void createView(Identifier identifier, View view, boolean ignoreIfExists)
+            throws ViewAlreadyExistException, DatabaseNotExistException {
+        current.createView(identifier, view, ignoreIfExists);
+    }
+
+    @Override
+    public List<String> listViews(String databaseName) throws DatabaseNotExistException {
+        return current.listViews(databaseName);
+    }
+
+    @Override
+    public void renameView(Identifier fromView, Identifier toView, boolean ignoreIfNotExists)
+            throws ViewNotExistException, ViewAlreadyExistException {
+        current.renameView(fromView, toView, ignoreIfNotExists);
+    }
+
+    @Override
+    public void repairCatalog() {
+        current.repairCatalog();
+    }
+
+    @Override
+    public void repairDatabase(String databaseName) {
+        current.repairDatabase(databaseName);
+    }
+
+    @Override
+    public void repairTable(Identifier identifier) throws TableNotExistException {
+        current.repairTable(identifier);
+    }
+
+    @Override
+    public boolean caseSensitive() {
+        return current.caseSensitive();
     }
 }

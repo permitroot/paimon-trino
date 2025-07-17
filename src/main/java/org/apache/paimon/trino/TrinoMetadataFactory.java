@@ -23,9 +23,6 @@ import org.apache.paimon.trino.catalog.TrinoCatalog;
 
 import com.google.inject.Inject;
 import io.trino.filesystem.TrinoFileSystemFactory;
-import io.trino.hdfs.ConfigurationUtils;
-import io.trino.hdfs.HdfsConfig;
-import io.trino.hdfs.HdfsConfigurationInitializer;
 import org.apache.hadoop.conf.Configuration;
 
 /** A factory to create {@link TrinoMetadata}. */
@@ -34,16 +31,13 @@ public class TrinoMetadataFactory {
     private final TrinoCatalog catalog;
 
     @Inject
-    public TrinoMetadataFactory(
-            Options options,
-            HdfsConfigurationInitializer hdfsConfigurationInitializer,
-            HdfsConfig hdfsConfig,
-            TrinoFileSystemFactory fileSystemFactory) {
-        Configuration configuration = null;
-        if (!hdfsConfig.getResourceConfigFiles().isEmpty()) {
-            configuration = ConfigurationUtils.getInitialConfiguration();
-            hdfsConfigurationInitializer.initializeConfiguration(configuration);
+    public TrinoMetadataFactory(Options options, TrinoFileSystemFactory fileSystemFactory) {
+
+        String confDir = options.get("hadoop-conf-dir");
+        if (confDir != null) {
+            System.setProperty("HADOOP_CONF_DIR", confDir);
         }
+        Configuration configuration = new Configuration();
 
         this.catalog = new TrinoCatalog(options, configuration, fileSystemFactory);
     }
